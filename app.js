@@ -456,7 +456,7 @@
         const disabled = !S.live || (name === "risk" && lockRisk && !ag.paused);
         const note = !S.live ? NOT_HERE : name === "risk" && lockRisk ? "Locked while a position is open" : "";
         return '<section class="fcard" id="agent-' + name + '"><div class="fh"><span class="status-dot ' + esc(ag.status) + '"></span><span class="name">' + AGENT_NAME[name] +
-          '</span><span class="count">' + esc(ag.status === "paused" ? "paused" : "running") + " · " + esc(ag.card || "") + "</span>" +
+          '</span><span class="count">' + esc(ag.status === "paused" ? "paused" : ag.status === "stale" ? "no heartbeat" : ag.status === "never" ? "not started" : "running") + " · " + esc(ag.card || "") + "</span>" +
           '<label class="switch" aria-label="Run ' + name + '"><input type="checkbox" data-pause="' + name + '"' + (ag.paused ? "" : " checked") + (disabled ? " disabled" : "") + '><span class="tr"></span><span class="kn"></span></label></div>' +
           (note ? '<div class="note">' + note + "</div>" : "") +
           (d === undefined ? '<div style="padding:0 16px 12px">' + sk(15) + sk(15, "80%", "margin-top:12px") + "</div>"
@@ -643,7 +643,41 @@
 
   /* ---------------------------------------------------------------- ACCOUNT TAB */
   const GROUPS = ["scanner", "auditor", "analyst", "executor", "risk", "desk"];
-  function label(k) { const s = k.split(".")[1].replace(/_/g, " "); return s[0].toUpperCase() + s.slice(1); }
+  const LABELS = {
+    "scanner.min_liquidity_usd": "Min liquidity ($)", "scanner.liq_grace_min": "Liquidity grace period (min)",
+    "scanner.max_top10_pct": "Max top 10 holders (%)", "scanner.max_h1_change_pct": "Max 1h price change (%)",
+    "scanner.poll_s": "Poll interval (s)", "scanner.min_pool_age_min": "Min pool age (min)",
+    "scanner.max_wait_min": "Max wait for a pool (min)", "scanner.runner_h24_pct": "Runner cutoff, 24h change (%)",
+    "scanner.ws_silent_s": "Feed silence limit (s)", "scanner.dex_req_per_min": "DexScreener requests per minute",
+    "scanner.dex_429_wait_s": "DexScreener rate-limit pause (s)",
+    "auditor.enabled": "Take apart before buying", "auditor.max_dev_pct": "Max dev wallet (%)",
+    "auditor.max_top10_pct": "Max top 10 holders (%)", "auditor.min_lp_locked_pct": "Min liquidity locked or burned (%)",
+    "auditor.min_pool_age_min": "Min pool age (min)", "auditor.max_bundled": "Max bundled wallets",
+    "auditor.max_delegated_accounts": "Max delegated accounts", "auditor.retries": "Retries per source",
+    "auditor.retry_gap_s": "Pause between retries (s)", "auditor.liq_pulled_drop_pct": "Liquidity pulled at a drop of (%)",
+    "analyst.mode": "Scoring mode", "analyst.min_alive_6h": "Min alive in 6h", "analyst.min_organic": "Min organic",
+    "analyst.max_chase": "Max chase", "analyst.min_score": "Min score", "analyst.timeout_s": "Answer timeout (s)",
+    "analyst.rules_alive_volume_h1": "Rules · 1h volume target ($)", "analyst.rules_organic_buys_h1": "Rules · 1h buys target",
+    "analyst.rules_bundled_penalty": "Rules · bundled penalty", "analyst.rules_bundled_penalty_wallets": "Rules · bundled wallets limit",
+    "analyst.rules_flush_drop_m5_pct": "Rules · flush drop, 5m (%)", "analyst.rules_chase_h1_pct": "Rules · chase rise, 1h (%)",
+    "executor.stack_pct": "Ticket size (% of stack)", "executor.max_pool_pct": "Max share of the pool (%)",
+    "executor.min_ticket_usd": "Min ticket ($)", "executor.below_min": "Below the min ticket",
+    "executor.recheck_liq_drop_pct": "Skip if liquidity dropped (%)", "executor.recheck_price_up_pct": "Skip if price ran up (%)",
+    "executor.confirm_window_min": "Buy confirm window (min)",
+    "risk.poll_s": "Price check interval (s)", "risk.stop_pct": "Stop loss (%)", "risk.trail_start_pct": "Trailing starts at gain (%)",
+    "risk.trail_pct": "Trailing stop, off the top (%)", "risk.timeout_h": "Dead money timeout (h)",
+    "risk.timeout_min_gain_pct": "Timeout if gain is below (%)", "risk.confirm_window_min": "Sell confirm window (min)",
+    "desk.mode": "Mode", "desk.paper_start_stack": "Paper start stack", "desk.report_time": "Morning report time",
+    "desk.notifier": "Push channel", "desk.rpc_url": "RPC URL", "desk.push_rejects": "Push rejected coins",
+    "desk.fees_ref_discount": "Fee referral discount", "desk.fomo_handle": "FOMO handle", "desk.live_stack": "Live stack",
+  };
+  const CHOICE_LABELS = { jev: "Jev", rules: "Rules", bump: "Bump to the min", skip: "Skip", telegram: "Telegram", test: "Test", webpush: "Web push" };
+  const choiceLabel = (v) => CHOICE_LABELS[v] || v;
+  const compactNum = (v) => { const a = Math.abs(v); return a >= 1e9 ? v / 1e9 + "B" : a >= 1e6 ? v / 1e6 + "M" : a >= 1e4 ? v / 1e3 + "K" : String(v); };
+  function label(k) {
+    if (LABELS[k]) return LABELS[k];
+    const s = k.split(".")[1].replace(/_/g, " "); return s[0].toUpperCase() + s.slice(1);
+  }
   function stepOf(it) {
     if (Number.isInteger(it.default) && Number.isInteger(it.min) && Number.isInteger(it.max)) return 1;
     const span = it.max - it.min;
@@ -655,11 +689,11 @@
     if (it.type === "number") {
       ctrl = '<div class="ctrl"><input type="range" data-k="' + k + '" min="' + it.min + '" max="' + it.max + '" step="' + stepOf(it) + '" value="' + it.value + '"' + dis + ' aria-label="' + esc(label(k)) + '">' +
         '<input type="number" data-k="' + k + '" value="' + it.value + '" min="' + it.min + '" max="' + it.max + '" step="any"' + dis + ' aria-label="' + esc(label(k)) + ' value"></div>';
-      return '<div class="set"><div class="sl"><span class="lab">' + esc(label(k)) + '</span><span class="faint mono" style="font-family:var(--font-mono);font-size:13px">' + it.min + "–" + it.max + "</span></div>" + ctrl + "</div>";
+      return '<div class="set"><div class="sl"><span class="lab">' + esc(label(k)) + '</span><span class="faint mono" style="font-family:var(--font-mono);font-size:13px">' + compactNum(it.min) + "–" + compactNum(it.max) + "</span></div>" + ctrl + "</div>";
     }
     if (it.type === "bool") return '<div class="set"><div class="sl" style="min-height:44px"><span class="lab">' + esc(label(k)) + '</span><label class="switch"><input type="checkbox" data-k="' + k + '"' + (it.value ? " checked" : "") + dis + '><span class="tr"></span><span class="kn"></span></label></div></div>';
     if (it.type === "choice") return '<div class="set"><div class="sl"><span class="lab">' + esc(label(k)) + '</span></div><div class="ctrl"><div class="seg" style="flex:1">' +
-      it.choices.map((c) => '<button data-k="' + k + '" data-v="' + esc(c) + '" class="' + (c === it.value ? "on" : "") + '"' + dis + ">" + esc(c) + "</button>").join("") + "</div></div></div>";
+      it.choices.map((c) => '<button data-k="' + k + '" data-v="' + esc(c) + '" class="' + (c === it.value ? "on" : "") + '"' + dis + ">" + esc(choiceLabel(c)) + "</button>").join("") + "</div></div></div>";
     return '<div class="set"><div class="sl"><span class="lab">' + esc(label(k)) + '</span><input type="text" data-k="' + k + '" value="' + esc(it.value) + '"' + dis + ' style="width:150px"></div></div>';
   }
 
@@ -803,7 +837,7 @@
   }
   const confirmSheet = (t, p, yes) => sheet("<h3>" + esc(t) + "</h3><p>" + esc(p) + '</p><div class="acts"><button class="btn" data-no>Cancel</button><button class="btn primary" data-yes>' + esc(yes) + "</button></div>");
   const promptSheet = (t, p, need) => sheet("<h3>" + esc(t) + "</h3><p>" + esc(p) + '</p><input class="field" data-need="' + esc(need) + '" autocapitalize="characters" autocomplete="off" placeholder="' + esc(need) + '"><div class="acts"><button class="btn" data-no>Cancel</button><button class="btn primary" data-yes disabled>Confirm</button></div>');
-  function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2400); }
+  function toast(msg) { msg = String(msg || ""); msg = msg.charAt(0).toUpperCase() + msg.slice(1); const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2400); }
 
   /* ---------------------------------------------------------------- loading */
   async function loadMore() {

@@ -117,10 +117,12 @@
         let rect = { x: bx, y: by, w: tw, h: th };
         while (hit(rect) && row < 6) { row++; rect = { x: bx, y: by - row * (th + 4), w: tw, h: th }; }
         if (rect.y < 2) rect.y = 2;
-        placed.push(rect);
+        const label = !hit(rect);   // no free row left (dense ranges): dot only, labels never overlap
+        if (label) placed.push(rect);
         const t0m = this.seenMarks.get(m.ts + "|" + m.text) || 0;
         const alpha = Math.min(1, Math.max(0, (now - t0m) / 200));
         ctx.save(); ctx.globalAlpha = alpha;
+        if (!label) { ctx.beginPath(); ctx.arc(mx, my, 3.5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.restore(); continue; }
         ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.globalAlpha = alpha * 0.5;
         ctx.beginPath(); ctx.moveTo(mx, my - 5); ctx.lineTo(mx, rect.y + rect.h); ctx.stroke();
         ctx.globalAlpha = alpha;
@@ -149,9 +151,17 @@
   function drawCandles(canvas, prices, exitLine) {
     const { ctx, w, h } = setup(canvas);
     const cs = buildCandles(prices);
-    if (!cs.length) {
-      ctx.fillStyle = C.text2; ctx.font = "15px " + FONT; ctx.textAlign = "center";
-      ctx.fillText("No price yet", w / 2, h / 2); return cs;
+    if (cs.length < 2) {
+      ctx.fillStyle = C.text2; ctx.font = "15px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("No price history yet", w / 2, h / 2); return cs;
+    }
+    const flat = cs.every((c) => c.h === cs[0].h && c.l === cs[0].l);
+    if (flat && exitLine == null) {   // prices recorded but none moved (no position): say so instead of a row of dots
+      const ly = Math.round(h / 2) + 0.5;
+      ctx.save(); ctx.setLineDash([3, 4]); ctx.strokeStyle = C.text3; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = C.text2; ctx.font = "15px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "top";
+      ctx.fillText("No price moves yet", w / 2, ly + 14); return cs;
     }
     const volH = 48, gap = 10, top = 18, bottom = h - volH - gap;
     let lo = Math.min(...cs.map((c) => c.l)), hi = Math.max(...cs.map((c) => c.h));
@@ -174,8 +184,14 @@
       const ly = Math.round(y(exitLine)) + 0.5;
       ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = C.orange; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke(); ctx.restore();
-      ctx.font = "600 12px " + FONT; ctx.fillStyle = C.orange; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
-      ctx.fillText("Risk trailing stop", w - 4, ly - 4);
+      // label on the left (newest candles are on the right), above the line unless candles are there, then below
+      ctx.font = "600 12px " + FONT; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      const txt = "Risk trailing stop", tw = ctx.measureText(txt).width + 12, th = 18;
+      const under = (y0, y1) => cs.some((c, i) => { const cx = slot * i + slot / 2; return cx + bw / 2 > 4 && cx - bw / 2 < 4 + tw && y(c.l) > y0 && y(c.h) < y1; });
+      let ry = ly - 4 - th;
+      if (under(ry, ry + th) && !under(ly + 4, ly + 4 + th)) ry = ly + 4;
+      ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.fillRect(4, ry, tw, th);
+      ctx.fillStyle = C.orange; ctx.fillText(txt, 10, ry + th / 2 + 0.5);
     }
     return cs;
   }

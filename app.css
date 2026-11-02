@@ -95,7 +95,7 @@ body.push-open #tab, body.push-open .tabbar { display: none; }
 .today { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 17px; }
 .chart-wrap { position: relative; margin-top: 12px; height: 240px; }
 .chart-wrap canvas { width: 100%; height: 100%; display: block; }
-.chart-empty { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(18px); text-align: center; color: var(--text-2); font-size: 15px; pointer-events: none; }
+.chart-empty { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(40px); text-align: center; color: var(--text-2); font-size: 15px; pointer-events: none; }
 .ranges { display: flex; justify-content: space-between; padding: 8px var(--gutter) 0; }
 .ranges button { min-width: var(--tap); min-height: var(--tap); padding: 0 8px; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--text-2); }
 .ranges button.on { background: var(--card-2); color: var(--green); }
@@ -237,6 +237,7 @@ body.push-open #tab, body.push-open .tabbar { display: none; }
 .row-link { display: flex; align-items: center; justify-content: space-between; min-height: var(--tap); padding: 10px var(--gutter); width: 100%; text-align: left; font-size: 17px; position: relative; }
 .list > .row-link:not(:first-child)::before { content: ""; position: absolute; top: 0; left: var(--gutter); right: 0; border-top: 0.5px solid var(--sep); }
 .row-link .rv { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 12px; }
+.row-link .rv.green { color: var(--green); } .row-link .rv.red { color: var(--red); }
 .btn { min-height: var(--tap); padding: 0 16px; border-radius: 22px; background: var(--card-2); font-weight: 600; font-size: 15px; }
 .btn.primary { background: var(--green); color: #000; }
 .btn:disabled { opacity: 0.4; }
