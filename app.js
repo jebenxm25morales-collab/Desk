@@ -1,10 +1,35 @@
 /* Grok Bot desk · iPhone web app (plain JS, no build step).
    Data: live API (/api/*, Authorization: Bearer <token>) or Plan B static JSON (d/<path>/*.json), same shapes.
-   The token and data path arrive ONLY via the URL fragment (#t=...&p=...), are kept in localStorage and
+   The token, API base (https only) and data path arrive ONLY via the private link's fragment
+   (#t=...&api=https://...&p=...), opened directly or pasted on the Connect screen; kept in localStorage and
    stripped from the address bar. Nothing secret is ever written into these files.
    FOMO links: only URLs the API/JSON provides (built server-side by links.py) are used. */
+/* Private link parsing: #t=<token>&api=<https base>[&p=<plan B path>]. Pure functions (tested in test_web).
+   api must be https:// (no http, no other scheme, no user:pass, no query or fragment). */
+(function (g) {
+  "use strict";
+  function safeApi(v) {
+    if (v == null || v === "") return null;
+    let u;
+    try { u = new URL(String(v)); } catch (e) { return null; }
+    if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash || !u.hostname) return null;
+    return u.origin + u.pathname.replace(/\/+$/, "");
+  }
+  function parse(text) {
+    const s = String(text == null ? "" : text).trim();
+    const i = s.indexOf("#");
+    const q = new URLSearchParams(i >= 0 ? s.slice(i + 1) : s);    // a whole link or just its fragment
+    const t = (q.get("t") || "").trim(), rawApi = (q.get("api") || "").trim(), p = (q.get("p") || "").trim();
+    const api = rawApi ? safeApi(rawApi) : null;
+    return { t: /^[A-Za-z0-9._~-]{16,512}$/.test(t) ? t : null, api, apiRejected: !!rawApi && api === null,
+             p: /^[A-Za-z0-9_-]{1,64}$/.test(p) ? p : null };
+  }
+  g.DeskLink = { parse, safeApi };
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
 (function () {
   "use strict";
+  const DeskLink = globalThis.DeskLink;
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const reduced = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -28,13 +53,14 @@
   function readFragment() {
     const h = location.hash.replace(/^#/, "");
     if (!h) return;
-    const q = new URLSearchParams(h);
-    let used = false;
-    if (q.get("t")) { localStorage.setItem("desk.t", q.get("t")); used = true; }
-    if (q.get("p")) { localStorage.setItem("desk.p", q.get("p")); used = true; }
-    if (q.get("api")) { localStorage.setItem("desk.api", q.get("api")); used = true; }
-    if (used) history.replaceState(null, "", location.pathname + location.search);   // strip from address bar
+    const L = DeskLink.parse(h);
+    if (L.t) localStorage.setItem("desk.t", L.t);
+    if (L.p) localStorage.setItem("desk.p", L.p);
+    if (L.api) localStorage.setItem("desk.api", L.api);            // https:// only; http and other schemes are dropped
+    if (L.apiRejected) S.linkError = "The desk address in this link must start with https://";
+    history.replaceState(null, "", location.pathname + location.search);   // strip from address bar
   }
+  const isStandalone = () => (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
   const token = () => localStorage.getItem("desk.t");
   const dataPath = () => localStorage.getItem("desk.p");
 
@@ -85,7 +111,9 @@
         if (r.ok) { DS.kind = "static"; DS.base = "fixtures/" + demo + "/"; DS.demo = demo; DS.hang = demo === "loading"; return; }
       } catch (e) { /* no fixtures folder in production */ }
     }
-    DS.api = (localStorage.getItem("desk.api") || "").replace(/\/$/, "");
+    const storedApi = localStorage.getItem("desk.api") || "";
+    DS.api = storedApi ? DeskLink.safeApi(storedApi) || "" : "";
+    if (storedApi && !DS.api) localStorage.removeItem("desk.api");
     if (token()) {
       try {
         const r = await fetch(DS.api + "/api/state", { headers: { Authorization: "Bearer " + token() }, cache: "no-store",
@@ -723,7 +751,7 @@
       '<a class="row-link" href="' + esc(ac.fomoProfile || lk.profile) + '" target="_blank" rel="noopener"><span>Your FOMO profile</span><span class="rv">' + esc("@" + (setVal("desk.fomo_handle") || "")) + " ›</span></a>" +
       '<button class="row-link" data-act="invite"><span>Invite a friend</span><span class="rv">›</span></button></div>';
     const tg = ac.telegram || {};
-    const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+    const standalone = isStandalone();
     let notif = "";
     if (!S.live) notif = '<div class="row-link"><span>Notifications</span><span class="rv wrap">Telegram only on this hosting</span></div>';
     else if (standalone) notif = '<button class="row-link" data-act="webpush"><span>Enable notifications</span><span class="rv">›</span></button>';
@@ -925,11 +953,38 @@
     clearTimeout(evTimer); evTimer = setTimeout(refresh, 400);
   }
 
+  /* ---------------------------------------------------------------- connect (home-screen app, no token yet)
+     An app added to the iPhone home screen has its own storage and opens at ./ without the link's fragment,
+     so it asks once for the private link. The link is parsed here and kept in localStorage only. */
+  function renderConnect() {
+    document.body.classList.add("connecting");
+    const root = $("#tab"); root.className = "screen connect";
+    root.innerHTML = '<div class="large-title connect-title">Connect your desk</div>' +
+      '<p class="connect-sub">Paste the private link Grok Bot sent you in Telegram. It stays on this iPhone.</p>' +
+      '<div class="list connect-box"><textarea id="connect-link" rows="3" placeholder="Private link" aria-label="Private link" ' +
+      'autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea></div>' +
+      '<div class="connect-err" id="connect-err" role="alert"></div>' +
+      '<button class="cta connect-go" id="connect-go" type="button">Connect</button>';
+    const err = (m) => { $("#connect-err").textContent = m || ""; };
+    if (S.linkError) err(S.linkError);
+    $("#connect-go").onclick = () => {
+      const L = DeskLink.parse($("#connect-link").value);
+      if (L.apiRejected) return err("The desk address in that link must start with https://");
+      if (!L.t) return err("That link has no desk key. Copy the whole link from Telegram.");
+      if (!L.api) return err("That link has no desk address. Copy the whole link from Telegram.");
+      localStorage.setItem("desk.t", L.t); localStorage.setItem("desk.api", L.api);
+      if (L.p) localStorage.setItem("desk.p", L.p);
+      $("#connect-link").value = "";
+      location.replace(location.pathname + location.search);   // reload: boot finds the stored link
+    };
+  }
+
   /* ---------------------------------------------------------------- boot */
   async function boot() {
     readFragment();
     shell();
     const qs = new URLSearchParams(location.search);
+    if (isStandalone() && !token() && !qs.get("demo")) { renderConnect(); return; }
     const scr = qs.get("screen");
     if (["home", "agents", "activity", "account"].includes(scr)) S.tab = scr;
     if (scr === "auditor" || scr === "coin") S.push = { type: scr, mint: qs.get("mint") || null };

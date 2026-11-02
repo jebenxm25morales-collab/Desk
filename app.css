@@ -272,3 +272,13 @@ body.scrolled .navbar .small-title { opacity: 1; }
 .row-link .rv.wrap { white-space: normal; text-align: right; flex: 0 1 60%; }
 .dec-empty { color: var(--text-2); font-size: 15px; padding: 14px var(--gutter) 6px; }
 .stats .sk, .card .sk, .list .sk { background: var(--card-2); }
+
+/* Connect screen (home-screen app without a stored link) */
+body.connecting .tabbar { display: none; }
+.connect { padding-top: calc(56px + var(--safe-t)); }
+.connect-sub { color: var(--text-2); font-size: 17px; line-height: 1.35; padding: 0 var(--gutter) 20px; margin: 0; }
+.connect-box textarea { display: block; width: 100%; min-height: 96px; border: 0; outline: none; resize: none; background: transparent;
+  color: var(--text); caret-color: var(--green); padding: 14px 16px; font: 17px/1.35 var(--font-text); }
+.connect-box textarea::placeholder { color: var(--text-3); }
+.connect-err { color: var(--red); font-size: 15px; min-height: 20px; padding: 10px var(--gutter) 0; }
+.connect-go { width: calc(100% - 2 * var(--gutter)); border: 0; cursor: pointer; }
