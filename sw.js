@@ -1,8 +1,8 @@
 /* Service worker: caches the app shell only (never data: d/, api/, fixtures/ always go to the network,
    so a stale number is never shown as current). Web push: one line, tap opens the coin's FOMO link that
    the server put in the payload (built by links.py). */
-const CACHE = "desk-shell-v2";
-const SHELL = ["./", "index.html", "app.css", "app.js", "chart.js", "manifest.json", "icons/icon-192.png", "icons/apple-touch-icon.png"];
+const CACHE = "desk-shell-v3";
+const SHELL = ["./", "index.html", "app.css", "app.js", "manifest.json", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

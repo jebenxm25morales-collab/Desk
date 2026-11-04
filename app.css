@@ -296,3 +296,7 @@ body.connecting .tabbar { display: none; }
 .copy-sum .cs-hb { color: var(--text-2); font-size: 13px; margin-top: 14px; }
 .empty-msg.small { padding: 16px var(--gutter); font-size: 15px; }
 .copy-foot { color: var(--text-3); font-size: 13px; text-align: center; padding: 20px var(--gutter) 0; margin: 0; }
+/* copy desk connection state: title line plus a one-line hint */
+#copy-err { flex-direction: column; align-items: flex-start; justify-content: center; padding-top: 8px; padding-bottom: 8px; }
+.err-hint { color: var(--text-2); font-size: 13px; line-height: 18px; margin-top: 2px; }
+.row-link .rv.mono-s { font-family: var(--font-mono); font-size: 13px; word-break: break-all; }
