@@ -282,3 +282,17 @@ body.connecting .tabbar { display: none; }
 .connect-box textarea::placeholder { color: var(--text-3); }
 .connect-err { color: var(--red); font-size: 15px; min-height: 20px; padding: 10px var(--gutter) 0; }
 .connect-go { width: calc(100% - 2 * var(--gutter)); border: 0; cursor: pointer; }
+
+/* Copy tab */
+.copy-sum { padding: 14px var(--gutter) 14px; }
+.copy-sum .cs-top { display: flex; align-items: center; justify-content: space-between; }
+.copy-sum .cs-l { color: var(--text-2); font-size: 15px; }
+.copy-sum .pill { font-size: 13px; font-weight: 600; color: var(--text-2); background: var(--card-2); border-radius: 10px; padding: 3px 9px; }
+.copy-sum .cs-eq { font-family: var(--font-display); font-size: 34px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.copy-sum .cs-pnl { font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.copy-sum .cs-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+.copy-sum .cs-stats .k { color: var(--text-2); font-size: 13px; }
+.copy-sum .cs-stats .v { font-size: 17px; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.copy-sum .cs-hb { color: var(--text-2); font-size: 13px; margin-top: 14px; }
+.empty-msg.small { padding: 16px var(--gutter); font-size: 15px; }
+.copy-foot { color: var(--text-3); font-size: 13px; text-align: center; padding: 20px var(--gutter) 0; margin: 0; }

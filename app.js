@@ -44,7 +44,7 @@
   const S = {
     tab: "home", push: null, range: "LIVE",
     state: undefined, settings: undefined, account: undefined, chart: {}, act: undefined, actNext: null, actPage: 0,
-    dec: {}, coin: {}, audit: {}, liveLayers: {},
+    dec: {}, coin: {}, audit: {}, liveLayers: {}, copy: undefined, copyErr: null, copyOk: null,
     lastOk: null, offline: null, live: false, loadedOnce: false, executorSeen: null,
   };
   const DS = { kind: null, base: "", api: "", demo: null, failAll: false, hang: false };
@@ -164,6 +164,7 @@
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>',
     agents: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>',
     activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
     account: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
     bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></svg>',
@@ -203,7 +204,7 @@
     document.body.innerHTML =
       '<div id="app"><main id="tab"></main><div id="push" class="hidden"></div></div>' +
       '<nav class="tabbar" id="tabbar">' +
-      ["home", "agents", "activity", "account"].map((t) =>
+      ["home", "agents", "copy", "activity", "account"].map((t) =>
         '<button data-tab="' + t + '" aria-label="' + t + '">' + I[t] + "<span>" + t[0].toUpperCase() + t.slice(1) + "</span></button>").join("") +
       "</nav>";
     $("#tabbar").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) go(b.dataset.tab); });
@@ -246,7 +247,7 @@
   function render() {
     document.querySelectorAll("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === S.tab));
     if (S.push) { (S.push.type === "auditor" ? renderAuditor : renderCoin)(); return; }   // the tab is hidden: render it on close
-    ({ home: renderHome, agents: renderAgents, activity: renderActivity, account: renderAccount })[S.tab]();
+    ({ home: renderHome, agents: renderAgents, copy: renderCopy, activity: renderActivity, account: renderAccount })[S.tab]();
   }
 
   const sk = (h, w = "100%", extra = "") => '<div class="sk" style="height:' + h + "px;width:" + w + ";" + extra + '"></div>';
@@ -501,6 +502,92 @@
       catch (err) { i.checked = !i.checked; toast(err.message); }
       refresh();
     };
+  }
+
+  /* ---------------------------------------------------------------- COPY TAB (PAPER copy-trading desk, read-only)
+     Its own small API (copydesk) behind the same desk address at /copy, same desk key. Fails on its own:
+     the rest of the app keeps working when the copy desk is unreachable, and vice versa. */
+  const COPY_EPS = ["summary", "wallets", "positions", "trades"];
+  function copyUrl(ep) { return DS.kind === "api" ? DS.api + "/copy/api/copy/" + ep : DS.base + "copy/" + ep + ".json"; }
+  async function refreshCopy() {
+    if (!DS.kind) return;
+    if (DS.hang) return new Promise(() => {});
+    try {
+      if (DS.failAll) throw new Error("offline");
+      const res = await Promise.all(COPY_EPS.map(async (ep) => {
+        const r = await fetch(copyUrl(ep), { headers: headers(), cache: "no-store", signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
+        if (!r.ok) throw new Error("http " + r.status);
+        return r.json();
+      }));
+      S.copy = { summary: res[0], wallets: res[1].wallets || [], positions: res[2].positions || [], trades: res[3].trades || [] };
+      S.copyErr = null; S.copyOk = Date.now();
+    } catch (e) {
+      S.copyErr = /http 401/.test(e.message) ? "Copy desk refused the desk key" : "Copy desk unreachable";
+    }
+  }
+  const short = (a) => (a && a.length > 10 ? a.slice(0, 4) + "…" + a.slice(-4) : a || "");
+  const dexLink = (mint) => "https://dexscreener.com/solana/" + encodeURIComponent(mint);
+  function ago(sec) {
+    if (sec == null) return "never";
+    const d = Math.max(0, Math.floor(Date.now() / 1000 - sec));
+    return d < 60 ? d + "s ago" : d < 3600 ? Math.floor(d / 60) + "m ago" : d < 172800 ? Math.floor(d / 3600) + "h ago" : Math.floor(d / 86400) + "d ago";
+  }
+  const signCls = (v) => (v == null ? "" : v >= 0 ? " pos" : " neg");
+  const pnlUsd = (v) => (v == null ? "n/a" : (v >= 0 ? "+" : "") + usd(v));
+  const EXIT = { take_profit: "Take profit", stop_loss: "Stop loss", mirror_sell: "Wallet sold", mirror_partial: "Wallet trimmed" };
+  const exitLabel = (t) => (t.status === "open" ? "Open" : EXIT[t.exit_reason] || (t.exit_reason ? String(t.exit_reason).replace(/_/g, " ") : t.status || ""));
+
+  function copySummary(s) {
+    const pnlCls = s.pnl_usd >= 0 ? "green" : "red";
+    const hb = s.last_poll == null ? "No watcher heartbeat yet" : "Watcher checked wallets " + ago(s.last_poll);
+    return '<section class="fcard copy-sum">' +
+      '<div class="cs-top"><span class="cs-l">Paper equity</span><span class="pill">Paper</span></div>' +
+      '<div class="cs-eq">' + usd(s.equity_usd) + "</div>" +
+      '<div class="cs-pnl ' + pnlCls + '">' + pnlUsd(s.pnl_usd) + " (" + pct(s.pnl_pct) + ')<span class="muted"> vs ' + usd(s.start_balance_usd) + " start</span></div>" +
+      '<div class="cs-stats">' +
+      [["Win rate", s.win_rate_pct == null ? "n/a" : s.win_rate_pct.toFixed(0) + "%"], ["Trades", s.trades], ["Open", s.open], ["Cash", usd(s.cash_usd)]]
+        .map(([k, v]) => '<div><div class="k">' + k + '</div><div class="v">' + esc(v) + "</div></div>").join("") +
+      "</div>" + '<div class="cs-hb">' + esc(hb) + " · " + esc(s.wallets_enabled) + " wallets followed</div></section>";
+  }
+  function walletRow(w) {
+    const bits = [w.copied + " copied", w.win_rate_pct == null ? null : w.win_rate_pct.toFixed(0) + "% win", w.avg_slippage_pct == null ? null : pct(w.avg_slippage_pct, 1) + " slip"].filter(Boolean);
+    return '<a class="row" href="https://solscan.io/account/' + encodeURIComponent(w.address) + '" target="_blank" rel="noopener"><div class="main"><div class="t">' + esc(w.label || w.short) +
+      '</div><div class="s">' + esc(w.label ? w.short : "") + '</div><div class="s">' + esc(bits.join(" · ")) + '</div></div><div class="v' + (w.copied ? signCls(w.pnl_usd) : " skip") + '">' + (w.copied ? pnlUsd(w.pnl_usd) : "n/a") +
+      '<div class="vs">' + (w.enabled ? (w.last_trade ? ago(w.last_trade) : "No trades yet") : "Off") + "</div></div></a>";
+  }
+  function posRow(p) {
+    const now = p.current_price == null ? "no price yet" : price(p.current_price);
+    return '<a class="row" href="' + dexLink(p.mint) + '" target="_blank" rel="noopener"><div class="main"><div class="t">' + esc(short(p.mint)) +
+      '</div><div class="s">' + esc(p.wallet_label || p.wallet_short) + '</div><div class="s">' + price(p.our_entry_price) + " → " + now + '</div><div class="s">Stop ' + price(p.stop_price) + " · TP " + price(p.tp_price) +
+      '</div></div><div class="v' + signCls(p.pnl_pct) + '">' + pct(p.pnl_pct, 1) + '<div class="vs">' + usd(p.size_usd) + "</div></div></a>";
+  }
+  function tradeRow(t) {
+    const val = t.status === "open" ? null : t.pnl_usd;
+    return '<a class="row" href="' + dexLink(t.mint) + '" target="_blank" rel="noopener"><div class="main"><div class="t">' + esc(short(t.mint)) + '</div><div class="s">' + esc(t.wallet_label || t.wallet_short) + '</div><div class="s">Wallet ' + price(t.wallet_entry_price) + " → us " + price(t.our_entry_price) + '</div><div class="s">' +
+      (t.delay_s == null ? "" : Math.round(t.delay_s) + "s later · ") + (t.slippage_pct == null ? "n/a" : pct(t.slippage_pct, 1)) + " slip" + (t.our_entry_time ? " · " + hhmm(t.our_entry_time * 1000) : "") +
+      '</div></div><div class="v' + (val == null ? " skip" : signCls(val)) + '">' + (val == null ? "Open" : pnlUsd(val)) + '<div class="vs">' + esc(exitLabel(t)) + "</div></div></a>";
+  }
+  function renderCopy() {
+    const root = $("#tab"); root.className = "screen"; delete root.dataset.home;
+    let html = navbar("Copy") + errRow() + '<div class="large-title">Copy</div>';
+    const c = S.copy;
+    if (S.copyErr) html += '<div class="err-row" id="copy-err">' + esc(S.copyErr) + " · retrying · last update " + (S.copyOk ? hhmm(S.copyOk) : "never") + "</div>";
+    if (c === undefined) {
+      if (S.copyErr || (!DS.kind && !S.picking)) { html += '<div class="empty-msg">Copy desk data will show here once it is reachable.</div>'; root.innerHTML = html; return; }
+      html += '<section class="fcard copy-sum">' + sk(15, "30%") + sk(34, "55%", "margin-top:10px") + sk(15, "65%", "margin-top:10px") + sk(40, "100%", "margin-top:16px") + "</section>" +
+        '<div class="section-h"><h2>Wallets</h2></div><div class="list">' + Array.from({ length: 3 }, () => '<div class="row"><div class="main">' + sk(17, "50%") + sk(14, "70%", "margin-top:8px") + "</div>" + sk(17, "60px") + "</div>").join("") + "</div>";
+      root.innerHTML = html; return;
+    }
+    html += copySummary(c.summary);
+    html += '<div class="section-h"><h2>Wallets</h2></div>' + (c.wallets.length ? '<div class="list">' + c.wallets.map(walletRow).join("") + "</div>" : '<div class="empty-msg">No wallets followed</div>');
+    if (!c.trades.length && !c.positions.length) {
+      html += '<div class="empty-msg">No copied trades yet. Waiting for wallets to trade.</div>';
+    } else {
+      html += '<div class="section-h"><h2>Open positions</h2></div>' + (c.positions.length ? '<div class="list">' + c.positions.map(posRow).join("") + "</div>" : '<div class="empty-msg small">No open positions</div>');
+      html += '<div class="section-h"><h2>Recent trades</h2></div><div class="list">' + c.trades.slice(0, 50).map(tradeRow).join("") + "</div>";
+    }
+    html += '<p class="copy-foot">Paper only. Copies are simulated, no real trades are placed.</p>';
+    root.innerHTML = html;
   }
 
   /* ---------------------------------------------------------------- AUDITOR SCREEN */
@@ -882,6 +969,7 @@
   async function refresh() {
     if (!DS.kind || refreshing) { render(); return; }
     refreshing = true;
+    const copyJob = S.tab === "copy" && !S.push ? refreshCopy() : null;
     try {
       const jobs = [get("state"), get("settings"), get("chart", S.range), get("activity", null), ...AGENTS.map((a) => get("decisions", a))];
       if (S.tab === "account") jobs.push(get("account"));
@@ -902,6 +990,7 @@
     } catch (e) {
       fail();
     } finally {
+      if (copyJob) await copyJob;
       refreshing = false;
     }
     render();
@@ -986,7 +1075,7 @@
     const qs = new URLSearchParams(location.search);
     if (isStandalone() && !token() && !qs.get("demo")) { renderConnect(); return; }
     const scr = qs.get("screen");
-    if (["home", "agents", "activity", "account"].includes(scr)) S.tab = scr;
+    if (["home", "agents", "copy", "activity", "account"].includes(scr)) S.tab = scr;
     if (scr === "auditor" || scr === "coin") S.push = { type: scr, mint: qs.get("mint") || null };
     if (S.push) { $("#push").classList.remove("hidden"); document.body.classList.add("push-open"); }
     S.picking = true; render();
